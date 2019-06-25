@@ -24,6 +24,8 @@ use Magento\Theme\Model\ResourceModel\Theme\Collection;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Catalog\Model\ResourceModel\Product\Gallery as Gallery;
 use Magento\Framework\App\ResourceConnection as ResourceConnection;
+use Psr\Log\LoggerInterface as Logger;
+
 
 /**
  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
@@ -84,10 +86,16 @@ class ImageResize
      * @var Filesystem
      */
     private $filesystem;
-
+    /**
+     * @var Gallery
+     */
     private $gallery;
-
+    /**
+     * @var ResourceConnection
+     */
     private $connection;
+
+    private $logger;
 
     /**
      * @param State $appState
@@ -115,7 +123,8 @@ class ImageResize
         Collection $themeCollection,
         Filesystem $filesystem,
         Gallery $gallery,
-        ResourceConnection $connection
+        ResourceConnection $connection,
+        Logger $logger
     ) {
 
        	$this->appState = $appState;
@@ -131,6 +140,7 @@ class ImageResize
         $this->filesystem = $filesystem;
         $this->gallery = $gallery;
         $this->connection = $connection;
+        $this->logger = $logger;
     }
 
     /**
@@ -172,12 +182,14 @@ class ImageResize
             $originalImagePath = $this->mediaDirectory->getAbsolutePath(
                 $this->imageConfig->getMediaPath($originalImageName)
             );
+            
             foreach ($viewImages as $viewImage) { 
-                if($this->isResized($originalImageName)){
+                if($this->isResized($originalImageName) && file_exists($originalImagePath)){
                     $this->resize($viewImage, $originalImagePath, $originalImageName);
-                    $this->setResizeAtByImagePath($originalImageName);
-                }                        
+                    $this->setResizeAtByImagePath($originalImageName);                                                          
+                }                                                       
             }
+            
             yield $originalImageName => $count;
 
         }
@@ -275,34 +287,43 @@ class ImageResize
         if ($imageParams['image_width'] !== null && $imageParams['image_height'] !== null) {
             $image->resize($imageParams['image_width'], $imageParams['image_height']);
         }
+        else{
+            $this->logger->info("Images Not Resize:".$originalImagePath);
+        }
         $image->save($imageAsset->getPath());
     }
 
     /**
-     * @param $image
+     * @param string $image
      */
     public function setResizeAtByImagePath(string $image){        
         
         $connection = $this->connection->getConnection();
-        $sql = "SELECT value_id
-        FROM `catalog_product_entity_media_gallery`
-        WHERE `value` = '$image'";
+        $select = $connection->select()->from(['media'=>'catalog_product_entity_media_gallery'],['value_id']);
+        $select->where('value = ?',$image); 
 
-        $valueId = $connection->fetchOne($sql);
-
+        $valueId = $connection->fetchOne($select);
         if($valueId){
-            $sql = "UPDATE `catalog_product_entity_media_gallery` SET `resized_at` = NOW() WHERE `value_id` = '$valueId'";            
-            $connection->query($sql);
+            $sql =  $this->connection->getConnection()->update(
+                'catalog_product_entity_media_gallery',
+                ['resized_at'=>date('Y-m-d H:i:s')],
+                ['value_id = ?' => $valueId]
+            );
+           
         }
         
     }
 
+    /**
+     * @param $image
+     * @return bool
+     */
     public function isResized($image){
         $connection = $this->connection->getConnection();
-        $sql = "SELECT value_id
-        FROM `catalog_product_entity_media_gallery`
-        WHERE `resized_at` IS NOT NULL AND `value` = '$image'";
-        $valueId = $connection->fetchOne($sql);
+        $select = $connection->select()->from(['media'=>'catalog_product_entity_media_gallery'],['value_id']);
+        $select->where('`resized_at` IS NOT NULL AND `value` = ?',$image);      
+
+        $valueId = $connection->fetchOne($select);
         if($valueId){
             return false;
         }else{

@@ -3,7 +3,6 @@
     
     use Symfony\Component\Console\Command\Command;
     use Symfony\Component\Console\Input\InputInterface;
-    use Symfony\Component\Console\Input\InputOption;
     use Symfony\Component\Console\Output\OutputInterface;
     use Magento\Framework\App\Area;
     use Magento\Framework\App\State;
@@ -13,7 +12,9 @@
     
     class Image extends Command
     {
-        
+        /**
+         * @var ImageResize
+         */
         private $resize;
 
         /**
@@ -67,7 +68,7 @@
                     'max' => $generator->current()
                 ]);
                 $progress->setFormat(
-                    "%current%/%max% [%bar%] %percent:3s%% %elapsed% %memory:6s% \t| <info>%message%</info>"
+                    "%current%/%max%  [%bar%] %percent:3s%% %elapsed% %memory:6s% \t| <info>%message%</info>"
                 );
 
                 if ($output->getVerbosity() !== OutputInterface::VERBOSITY_NORMAL) {
