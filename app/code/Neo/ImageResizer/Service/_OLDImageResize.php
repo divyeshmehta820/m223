@@ -97,8 +97,6 @@ class ImageResize
 
     private $logger;
 
-    private $flag;
-
     /**
      * @param State $appState
      * @param MediaConfig $imageConfig
@@ -129,7 +127,7 @@ class ImageResize
         Logger $logger
     ) {
 
-        $this->appState = $appState;
+       	$this->appState = $appState;
         $this->imageConfig = $imageConfig;
         $this->productImage = $productImage;
         $this->imageFactory = $imageFactory;
@@ -175,24 +173,27 @@ class ImageResize
         if (!$count) {
             throw new NotFoundException(__('Cannot resize images - product images not found'));
         }
-
-
+        
         $productImages = $this->notResizedImages();
-
+        
 
         $viewImages = $this->getViewImages($themes ?? $this->getThemesInUse());
-
-
+        
         foreach ($productImages as $image) {
-            $originalImageName = $image['value'];
+            $originalImageName = $image['value'];            
             $originalImagePath = $this->mediaDirectory->getAbsolutePath(
                 $this->imageConfig->getMediaPath($originalImageName)
             );
-
-            foreach ($viewImages as $viewImage) {
-                $this->resize($viewImage, $originalImagePath, $originalImageName);                               
-            }            
-
+            //if($this->isResized($originalImageName)){
+                
+                foreach ($viewImages as $viewImage) { 
+                    
+                        $this->resize($viewImage, $originalImagePath, $originalImageName);
+                        $this->setResizeAtByImagePath($originalImageName);                                                          
+                                                                           
+                }
+            //}
+            
             yield $originalImageName => $count;
 
         }
@@ -278,7 +279,6 @@ class ImageResize
      */
     private function resize(array $viewImage, string $originalImagePath, string $originalImageName)
     {
-
         $imageParams = $this->paramsBuilder->build($viewImage);
         $image = $this->makeImage($originalImagePath, $imageParams);
         $imageAsset = $this->assertImageFactory->create(
@@ -288,23 +288,33 @@ class ImageResize
             ]
         );
 
-        if ($imageParams['image_width'] !== null && $imageParams['image_height'] !== null) {           
+        if ($imageParams['image_width'] !== null && $imageParams['image_height'] !== null) {
             $image->resize($imageParams['image_width'], $imageParams['image_height']);
-            $this->setResizeAtByImagePath($originalImageName);
-            
         }
         else{
-            if($this->isResized($originalImageName)){
-                $this->setResizedNull($originalImageName);
-                $valueId = $this->getMediaIdFromName($originalImageName);
-                $writer = new \Zend\Log\Writer\Stream(BP . '/var/log/notresizedimages.log');
-                $logger = new \Zend\Log\Logger();
-                $logger->addWriter($writer);
-                $logger->info('Name:'.$originalImageName.'----Full Path:'.$originalImagePath.'----ID:'.$valueId);
-            }
-                     
+            $this->logger->info("Images Not Resize:".$originalImagePath);
         }
         $image->save($imageAsset->getPath());
+    }
+
+    /**
+     * @param string $image
+     */
+    public function setResizeAtByImagePath(string $image){        
+        
+        $connection = $this->connection->getConnection();
+        $select = $connection->select()->from(['media'=>'catalog_product_entity_media_gallery'],['value_id']);
+        $select->where('value = ?',$image); 
+
+        $valueId = $connection->fetchOne($select);
+        if($valueId){
+            $sql =  $this->connection->getConnection()->update(
+                'catalog_product_entity_media_gallery',
+                ['resized_at'=>date('Y-m-d H:i:s')],
+                ['value_id = ?' => $valueId]
+            );
+           
+        }
         
     }
 
@@ -316,6 +326,7 @@ class ImageResize
         $connection = $this->connection->getConnection();
         $select = $connection->select()->from(['media'=>'catalog_product_entity_media_gallery'],['value_id']);
         $select->where('`resized_at` IS NOT NULL AND `value` = ?',$image);      
+
         $valueId = $connection->fetchOne($select);
         if($valueId){
             return false;
@@ -325,73 +336,21 @@ class ImageResize
 
     }
 
-    /**
-     * @param string $image
-     */
-    public function setResizeAtByImagePath(string $image){
-
-        $connection = $this->connection->getConnection();
-        if($image){
-            $sql =  $connection->update(
-                'catalog_product_entity_media_gallery',
-                ['resized_at'=>date('Y-m-d H:i:s')],
-                ['value = ?' => $image]
-            );
-           //$sql = "UPDATE `catalog_product_entity_media_gallery` SET `resized_at` = now() WHERE `value` = '$image'";
-            //$connection->query($sql);
-        }
-
-    }
-
-
-    /**
-     * @return array
-     */
     public function notResizedImages(){
-        $connection = $this->connection->getConnection();
+     $connection = $this->connection->getConnection();
         $select = $connection->select()->from(['media'=>'catalog_product_entity_media_gallery'],['value']);
-        $select->where('`resized_at` IS NULL');
+        $select->where('`resized_at` IS NULL');        
         $productImages = $connection->fetchAll($select);
         return $productImages;
     }
+        
 
-    /**
-     * @param string $image
-     */
-    public function setResizedNull(string $image){
-        if($image){
-            $connection = $this->connection->getConnection();
-            $sql =  $connection->update(
-                'catalog_product_entity_media_gallery',
-                ['resized_at'=> NULL],
-                ['value = ?' => $image]
-            );
-            //$sql = "UPDATE `catalog_product_entity_media_gallery` SET `resized_at` = NULL WHERE `value` = '$image'";
-            //$connection->query($sql);
-        }
-
-    }
-
-    /**
-     * @return string
-     */
     public function getPendingMediaCount(){
         $connection = $this->connection->getConnection();
         $select = $connection->select()->from(['media'=>'catalog_product_entity_media_gallery'],['count(value_id)']);
         $select->where('`resized_at` IS NULL');
         $count = $connection->fetchOne($select);
         return $count;
-
-    }
-
-    /**
-     * @return string
-     */
-    public function getMediaIdFromName($image){
-        $connection = $this->connection->getConnection();
-        $select = $connection->select()->from(['media'=>'catalog_product_entity_media_gallery'],['value_id']);
-        $select->where("`value` = (?)",$image);
-        return $connection->fetchOne($select);        
 
     }
 
