@@ -9,6 +9,9 @@ use Magento\Framework\App\State;
 use Neo\ImageResizer\Service\ImageResize;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Magento\Framework\ObjectManagerInterface;
+use Neo\ImageResizer\Helper\Data as NeoHelper;
+use Magento\Framework\Exception\NotFoundException;
+
 
 class Image extends Command
 {
@@ -28,19 +31,31 @@ class Image extends Command
     private $objectManager;
 
     /**
-     * @inheritDoc
+     * @var NeoHelper
      */
+    private $neoHepler;
 
+
+    /**
+     * Image constructor.
+     * @param State $appState
+     * @param ImageResize $resize
+     * @param ObjectManagerInterface $objectManager
+     * @param NeoHelper $neoHepler
+     */
     public function __construct(
         State $appState,
         ImageResize $resize,
-        ObjectManagerInterface $objectManager
+        ObjectManagerInterface $objectManager,
+        NeoHelper $neoHepler
     ) {
         parent::__construct();
         $this->resize = $resize;
         $this->appState = $appState;
         $this->objectManager = $objectManager;
+        $this->neoHepler = $neoHepler;
     }
+
 
     protected function configure()
     {
@@ -59,28 +74,37 @@ class Image extends Command
     {
 
         try {
-            $this->appState->setAreaCode(Area::AREA_GLOBAL);
-            $generator = $this->resize->resizeFromThemes();
-            $pendingCount = $this->resize->getPendingMediaCount();
+
+            if($this->neoHepler->getCommandFlag() == 0){
+                $this->neoHepler->setCommandFlag(1);
+                $this->appState->setAreaCode(Area::AREA_GLOBAL);
+                $generator = $this->resize->resizeFromThemes();
+                $pendingCount = $this->resize->getPendingMediaCount();
 
 
-            /** @var ProgressBar $progress */
-            $progress = $this->objectManager->create(ProgressBar::class, [
-                'output' => $output,
-                'max' => $pendingCount
-            ]);
-            $progress->setFormat(
-                "%current%/%max% [%bar%] %percent:3s%% %elapsed% %memory:6s% \t| <info>%message%</info>"
-            );
+                /** @var ProgressBar $progress */
+                $progress = $this->objectManager->create(ProgressBar::class, [
+                    'output' => $output,
+                    'max' => $pendingCount
+                ]);
+                $progress->setFormat(
+                    "%current%/%max% [%bar%] %percent:3s%% %elapsed% %memory:6s% \t| <info>%message%</info>"
+                );
 
-            if ($output->getVerbosity() !== OutputInterface::VERBOSITY_NORMAL) {
-                $progress->setOverwrite(false);
+                if ($output->getVerbosity() !== OutputInterface::VERBOSITY_NORMAL) {
+                    $progress->setOverwrite(false);
+                }
+
+                for (; $generator->valid(); $generator->next()) {
+                    $progress->setMessage($generator->key());
+                    $progress->advance();
+                }
+               $this->neoHepler->setCommandFlag(0);
             }
-
-            for (; $generator->valid(); $generator->next()) {
-                $progress->setMessage($generator->key());
-                $progress->advance();
+            else{
+                throw new NotFoundException(__('Command Already Running in Some Terminal Please Wait...'));
             }
+            
         } catch (\Exception $e) {
             $output->writeln("<error>{$e->getMessage()}</error>");
             // we must have an exit code higher than zero to indicate something was wrong

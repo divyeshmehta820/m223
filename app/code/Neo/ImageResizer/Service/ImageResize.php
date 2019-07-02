@@ -23,8 +23,7 @@ use Magento\Theme\Model\Config\Customization as ThemeCustomizationConfig;
 use Magento\Theme\Model\ResourceModel\Theme\Collection;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Catalog\Model\ResourceModel\Product\Gallery as Gallery;
-use Magento\Framework\App\ResourceConnection as ResourceConnection;
-use Psr\Log\LoggerInterface as Logger;
+use Magento\Framework\App\ResourceConnection as ResourceConnection; 
 
 
 /**
@@ -95,10 +94,9 @@ class ImageResize
      */
     private $connection;
 
-    private $logger;
+    
 
-    private $flag;
-
+    
     /**
      * @param State $appState
      * @param MediaConfig $imageConfig
@@ -125,8 +123,8 @@ class ImageResize
         Collection $themeCollection,
         Filesystem $filesystem,
         Gallery $gallery,
-        ResourceConnection $connection,
-        Logger $logger
+        ResourceConnection $connection
+
     ) {
 
         $this->appState = $appState;
@@ -142,7 +140,6 @@ class ImageResize
         $this->filesystem = $filesystem;
         $this->gallery = $gallery;
         $this->connection = $connection;
-        $this->logger = $logger;
     }
 
     /**
@@ -171,7 +168,7 @@ class ImageResize
      */
     public function resizeFromThemes(array $themes = null): \Generator
     {
-        $count = $this->productImage->getCountAllProductImages();
+      $count = $this->productImage->getCountAllProductImages();
         if (!$count) {
             throw new NotFoundException(__('Cannot resize images - product images not found'));
         }
@@ -194,7 +191,7 @@ class ImageResize
             }            
 
             yield $originalImageName => $count;
-
+            $this->setResizeAtByImagePath($originalImageName);
         }
     }
 
@@ -287,13 +284,15 @@ class ImageResize
                 'filePath' => $originalImageName,
             ]
         );
+        
 
-        if ($imageParams['image_width'] !== null && $imageParams['image_height'] !== null) {           
+
+       if ($imageParams['image_width'] !== null && $imageParams['image_height'] !== null) {           
             $image->resize($imageParams['image_width'], $imageParams['image_height']);
-            $this->setResizeAtByImagePath($originalImageName);
             
         }
         else{
+
             if($this->isResized($originalImageName)){
                 $this->setResizedNull($originalImageName);
                 $valueId = $this->getMediaIdFromName($originalImageName);
@@ -337,8 +336,6 @@ class ImageResize
                 ['resized_at'=>date('Y-m-d H:i:s')],
                 ['value = ?' => $image]
             );
-           //$sql = "UPDATE `catalog_product_entity_media_gallery` SET `resized_at` = now() WHERE `value` = '$image'";
-            //$connection->query($sql);
         }
 
     }
@@ -366,8 +363,7 @@ class ImageResize
                 ['resized_at'=> NULL],
                 ['value = ?' => $image]
             );
-            //$sql = "UPDATE `catalog_product_entity_media_gallery` SET `resized_at` = NULL WHERE `value` = '$image'";
-            //$connection->query($sql);
+            
         }
 
     }
